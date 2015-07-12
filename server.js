@@ -6,6 +6,7 @@ function GameParameters() {
     this.unitRange = 5; //number of tiles around a unit, where the unit is able to shoot
     this.units = null;
     this.players = null;
+    this.uniqueID = 0.0;
 }
 var currentGameParameters = new GameParameters();
 
@@ -28,6 +29,7 @@ function Player() {
 function buildInitialBoard() {
     currentGameParameters.players = new Array();
     currentGameParameters.units = new Array();
+    currentGameParameters.uniqueID = Math.random().toString(16);
     var i = currentGameParameters.initialUnitCount * currentGameParameters.playerCount;
     while (i > 0) {
         var coordX = Math.floor(currentGameParameters.worldSizeX * Math.random());
@@ -41,7 +43,7 @@ function buildInitialBoard() {
             });
         if (!occupiedTile) {
             var newUnit = new ArmyUnit();
-            newUnit.hp = Math.floor(1 + 6 * Math.random());
+            newUnit.hp = Math.floor(1 + 12 * Math.random());
             newUnit.team = i % currentGameParameters.playerCount;
             newUnit.posX = coordX;
             newUnit.posY = coordY;
@@ -66,6 +68,7 @@ function compressAndSend(request, response, contType, txt) {
 }
 
 require('http').createServer(function (request, response) {
+    console.log(request.url);
     if (request.url == '/favicon.ico') {
         response.writeHead(404);
         response.end();
@@ -95,7 +98,13 @@ require('http').createServer(function (request, response) {
             else if (request.url == '/login') {
                 if (currentGameParameters.players.length < currentGameParameters.playerCount) {
                     var player = new Player();
-                    compressAndSend(request, response, 'application/json', JSON.stringify(currentGameParameters.units));
+                    player.team = currentGameParameters.players.length;
+                    player.uniqueID = Math.random().toString(16);
+                    currentGameParameters.players.push(player);
+                    compressAndSend(request, response, 'application/json', JSON.stringify({ game: currentGameParameters.uniqueID, player: player }));
+                }
+                else {
+                    compressAndSend(request, response, 'application/json', JSON.stringify({ error: 'game is full' }));
                 }
             }
             else {

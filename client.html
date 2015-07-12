@@ -49,7 +49,7 @@
         }
     </style>
 </head>
-<body onload="window.engine.start();">
+<body onload="window.engine.start();" onunload="window.engine.stop();">
     <div style="position:fixed; top:0; left:0; z-index:11">
         <div id="renderTimeDiv"></div>
         <div id="debugDiv"></div>
@@ -357,11 +357,11 @@
             engine.units.forEach(
                 function (unit) {
                     if (unit.selected) {
-                        drawOneFilledHex(selectionContext, unit.position.matrixX, unit.position.matrixY, 6, "#fff");
+                        drawOneFilledHex(selectionContext, unit.position.matrixX, unit.position.matrixY, 12, "#fff");
                         selectionLayer.className = "blinking";
                         unit.range.forEach(
                             function (tile) {
-                                drawOneFilledHex(rangeContext, tile.matrixX, tile.matrixY, 6, "#ffa"); // yellow
+                                drawOneFilledHex(rangeContext, tile.matrixX, tile.matrixY, 12, "#ffa"); // yellow
                             });
                         if (unit.moveOrder != null) {
                             var orderVectorX = unit.moveOrder.centerX - unit.position.centerX;
@@ -487,14 +487,20 @@
             var xSize = engine.tileSize;
             var ySize = xSize / 1.732; // divide by (sqrt(3)) to draw a regular hexagon
             context.beginPath();
-            context.moveTo(10 + xSize * 1 + xSize * 2 * x + xSize * mod, 10 + ySize * 2 + ySize * 3 * y);
-            context.lineTo(10 + xSize * 1 + xSize * 2 * x + xSize * mod, 10 + ySize * 0 + ySize * 3 * y);
-            context.lineTo(10 + xSize * 2 + xSize * 2 * x + xSize * mod, 10 + ySize * 1 + ySize * 3 * y);
-            if (hp > 1) context.lineTo(10 + xSize * 2 + xSize * 2 * x + xSize * mod, 10 + ySize * 3 + ySize * 3 * y);
-            if (hp > 2) context.lineTo(10 + xSize * 1 + xSize * 2 * x + xSize * mod, 10 + ySize * 4 + ySize * 3 * y);
-            if (hp > 3) context.lineTo(10 + xSize * 0 + xSize * 2 * x + xSize * mod, 10 + ySize * 3 + ySize * 3 * y);
-            if (hp > 4) context.lineTo(10 + xSize * 0 + xSize * 2 * x + xSize * mod, 10 + ySize * 1 + ySize * 3 * y);
-            if (hp > 5) context.lineTo(10 + xSize * 1 + xSize * 2 * x + xSize * mod, 10 + ySize * 0 + ySize * 3 * y);
+            context.moveTo(10 + xSize * 1.0 + xSize * 2 * x + xSize * mod, 10 + ySize * 2.0 + ySize * 3 * y);
+            context.lineTo(10 + xSize * 1.0 + xSize * 2 * x + xSize * mod, 10 + ySize * 0.0 + ySize * 3 * y);
+            context.lineTo(10 + xSize * 1.5 + xSize * 2 * x + xSize * mod, 10 + ySize * 0.5 + ySize * 3 * y);
+            if (hp > 1) context.lineTo(10 + xSize * 2.0 + xSize * 2 * x + xSize * mod, 10 + ySize * 1.0 + ySize * 3 * y);
+            if (hp > 2) context.lineTo(10 + xSize * 2.0 + xSize * 2 * x + xSize * mod, 10 + ySize * 2.0 + ySize * 3 * y);
+            if (hp > 3) context.lineTo(10 + xSize * 2.0 + xSize * 2 * x + xSize * mod, 10 + ySize * 3.0 + ySize * 3 * y);
+            if (hp > 4) context.lineTo(10 + xSize * 1.5 + xSize * 2 * x + xSize * mod, 10 + ySize * 3.5 + ySize * 3 * y);
+            if (hp > 5) context.lineTo(10 + xSize * 1.0 + xSize * 2 * x + xSize * mod, 10 + ySize * 4.0 + ySize * 3 * y);
+            if (hp > 6) context.lineTo(10 + xSize * 0.5 + xSize * 2 * x + xSize * mod, 10 + ySize * 3.5 + ySize * 3 * y);
+            if (hp > 7) context.lineTo(10 + xSize * 0.0 + xSize * 2 * x + xSize * mod, 10 + ySize * 3.0 + ySize * 3 * y);
+            if (hp > 8) context.lineTo(10 + xSize * 0.0 + xSize * 2 * x + xSize * mod, 10 + ySize * 2.0 + ySize * 3 * y);
+            if (hp > 9) context.lineTo(10 + xSize * 0.0 + xSize * 2 * x + xSize * mod, 10 + ySize * 1.0 + ySize * 3 * y);
+            if (hp > 10) context.lineTo(10 + xSize * 0.5 + xSize * 2 * x + xSize * mod, 10 + ySize * 0.5 + ySize * 3 * y);
+            if (hp > 11) context.lineTo(10 + xSize * 1.0 + xSize * 2 * x + xSize * mod, 10 + ySize * 0.0 + ySize * 3 * y);
             context.closePath();
             context.fillStyle = color;
             context.fill();
@@ -506,7 +512,7 @@
         function ArmyUnit() {
             this.position = null; // type is WorldTile
             this.team = 0;
-            this.hp = 0; // max HP = 6 ; 0 = dead
+            this.hp = 0; // max HP = 12 ; 0 = dead
             this.selected = false;
             this.range = null; // list of all the World Tiles that are within range
             this.hasOrder = false;
@@ -546,6 +552,7 @@
         function GameEngine() {
             this.tileSize = 6.0; // radius, in pixels, of a tile rendered on screen
             this.serverParameters = null;
+            this.authentication = null;
             this.tiles = null; // array of all World Tiles
             this.units = null; // array of all Army Units
             this.rng = new RNG(); // random number generator. See math stuff.
@@ -557,9 +564,9 @@
         GameEngine.prototype.dump = function (txt) {
             console.debug(txt);
         };
-        GameEngine.prototype.sendAjax = function (path, param, callback) {
+        GameEngine.prototype.sendAjax = function (path, param, callback, async) {
             var xhr = new XMLHttpRequest();
-            xhr.open('POST', window.location.href + path, true);
+            xhr.open('POST', window.location.href + path, async);
             xhr.setRequestHeader("Content-Type", "application/json");
             xhr.onreadystatechange = function () {
                 if (xhr.readyState == 4) {
@@ -572,7 +579,7 @@
             if (!document.getElementById('gridLayer').getContext) alert('You need a modern browser to play this game.');
             else {
                 var startTime = new Date().getTime();
-                engine.sendAjax("getEngineConfig", null, engine.loadServerParameters);
+                engine.sendAjax("getEngineConfig", null, engine.loadServerParameters, true);
                 //#region Performance tests
                 //for (var loop = 0; loop < 10000000; loop++) {
                 //    getHoveredTile(100, 100);
@@ -600,10 +607,13 @@
                 //renderTimeDiv.innerHTML = "Render time: " + renderTime;
             }
         };
+        GameEngine.prototype.stop = function () {
+            engine.sendAjax("logoff", JSON.stringify(engine.authentication), engine.dump, false);
+        };
         GameEngine.prototype.loadServerParameters = function (params) {
             engine.serverParameters = JSON.parse(params);
             initTiles();
-            engine.sendAjax("getBoard", null, engine.loadBoard);
+            engine.sendAjax("getBoard", null, engine.loadBoard, true);
         };
         GameEngine.prototype.loadBoard = function (params) {
             engine.tiles.forEach(
@@ -622,10 +632,15 @@
                     engine.units.push(newUnit);
                 });
             applyZoom();
-            engine.sendAjax("login", null, engine.login);
+            engine.sendAjax("login", null, engine.login, true);
         };
         GameEngine.prototype.login = function (params) {
-            registerEvents();
+            if (JSON.parse(params).error) alert(JSON.parse(params).error);
+            else {
+                engine.authentication = JSON.parse(params);
+                console.debug(engine);
+                registerEvents();
+            }
         };
 
         var engine = new GameEngine();
