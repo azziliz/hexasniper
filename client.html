@@ -559,7 +559,7 @@
         };
         GameEngine.prototype.sendAjax = function (path, param, callback) {
             var xhr = new XMLHttpRequest();
-            xhr.open('POST', 'http://localhost:15881/' + path, true);
+            xhr.open('POST', window.location.href + path, true);
             xhr.setRequestHeader("Content-Type", "application/json");
             xhr.onreadystatechange = function () {
                 if (xhr.readyState == 4) {
@@ -622,6 +622,9 @@
                     engine.units.push(newUnit);
                 });
             applyZoom();
+            engine.sendAjax("login", null, engine.login);
+        };
+        GameEngine.prototype.login = function (params) {
             registerEvents();
         };
 

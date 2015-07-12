@@ -20,6 +20,11 @@ function ArmyUnit() {
     this.oY = 0;
 }
 
+function Player() {
+    this.team = 0;
+    this.uniqueID = 0.0;
+}
+
 function buildInitialBoard() {
     currentGameParameters.players = new Array();
     currentGameParameters.units = new Array();
@@ -87,12 +92,18 @@ require('http').createServer(function (request, response) {
                 response.writeHead(200, { 'Content-Type': 'text/plain' });
                 response.end("OK");
             }
+            else if (request.url == '/login') {
+                if (currentGameParameters.players.length < currentGameParameters.playerCount) {
+                    var player = new Player();
+                    compressAndSend(request, response, 'application/json', JSON.stringify(currentGameParameters.units));
+                }
+            }
             else {
                 response.writeHead(404);
                 response.end();
             }
         });
     }
-}).listen(15881, '127.0.0.1');
+}).listen(15881);
 
 console.log('Server running at http://127.0.0.1:15881/');
