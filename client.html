@@ -1,0 +1,634 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Hexagrid</title>
+    <style type="text/css">
+        body {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .blinking {
+            -webkit-animation-duration: 0.3s;
+            animation-duration: 0.3s;
+            -webkit-animation-name: blinking;
+            animation-name: blinking;
+            -webkit-animation-iteration-count: infinite;
+            animation-iteration-count: infinite;
+            -webkit-animation-direction: alternate;
+            animation-direction: alternate;
+            -webkit-animation-timing-function: linear;
+            animation-timing-function: linear;
+        }
+
+        @-webkit-keyframes blinking {
+            from {
+                opacity: 0.0;
+            }
+
+            to {
+                opacity: 0.8;
+            }
+        }
+
+        @keyframes blinking {
+            from {
+                opacity: 0.0;
+            }
+
+            to {
+                opacity: 0.8;
+            }
+        }
+    </style>
+</head>
+<body onload="window.engine.start();">
+    <div style="position:fixed; top:0; left:0; z-index:11">
+        <div id="renderTimeDiv"></div>
+        <div id="debugDiv"></div>
+    </div>
+    <canvas id="topLayer" width="1800" height="1200" style="z-index: 99"></canvas>
+    <canvas id="orderLayer" width="1800" height="1200" style="z-index: 20"></canvas>
+    <canvas id="gridLayer" width="1800" height="1200" style="z-index: 15"></canvas>
+    <canvas id="selectionLayer" width="1800" height="1200" style="z-index: 9"></canvas>
+    <canvas id="teamLayer" width="1800" height="1200" style="z-index: 6"></canvas>
+    <canvas id="rangeLayer" width="1800" height="1200" style="z-index: 3"></canvas>
+
+    <script type="text/javascript">
+        "use strict";
+
+        //#region Math stuff
+
+        /// Returns a number between min and max.
+        ///  7, 10, 20 --> returns 10
+        /// 12, 10, 20 --> returns 12
+        /// 16, 10, 20 --> returns 16
+        /// 24, 10, 20 --> returns 20
+        function constrainNumber(val, min, max) {
+            var tmp = Math.max(val, min);
+            tmp = Math.min(tmp, max);
+            return tmp;
+        }
+
+        /// Seedable / predictable pseudo random number generator.
+        /// Slow and biased but we don't really care.
+        /// Hopefully pretty consistent across browsers.
+        /// Testing with IE and Chrome shows consistency on about 8 decimal digits.
+        function RNG() {
+            this.seed = 150881;
+            this.next = function () {
+                var x = Math.sin(this.seed++) * 16384;
+                return x - Math.floor(x);
+            }
+        }
+        //#endregion
+
+        //#region Events handling
+
+        function registerEvents() {
+            // IE11 returns decimal number for MouseEvent coordinates but Chrome43 always rounds down.
+            // --> using floor() for consistency.
+            // Also, rounding cancels the canvas shift (0.5 pixel)
+            // and retrieves the nearest pixel coordinates.
+            document.getElementById('topLayer').addEventListener("mousedown", function () {
+                event.preventDefault(); // usually, keeping the left mouse button down triggers a text selection or a drag & drop.
+                var mouseX = Math.floor(event.pageX);
+                var mouseY = Math.floor(event.pageY);
+                topLayer_onClick(mouseX, mouseY, event.button == 2);
+            }, false);
+            document.getElementById('topLayer').addEventListener("contextmenu", function () { // mouse right click
+                event.preventDefault();
+                console.debug(JSON.stringify(engine.units));
+            }, false);
+            document.getElementById('topLayer').addEventListener("wheel", function () {
+                event.preventDefault(); // no page scrolling.
+                if (event.deltaY > 0) {
+                    engine.tileSize *= 0.8;
+                    engine.tileSize = Math.round(constrainNumber(engine.tileSize, 4, 13));
+                }
+                if (event.deltaY < 0) {
+                    engine.tileSize /= 0.8;
+                    engine.tileSize = Math.round(constrainNumber(engine.tileSize, 4, 13));
+                }
+                applyZoom();
+            }, false);
+            document.addEventListener("keydown", function () {
+                console.debug(event);
+            }, false);
+        }
+        //#endregion
+
+        // Fills tile arrays inside the engine. Computes neighbors. Draws grid.
+        function initTiles() {
+            //#region Creating tiles
+            engine.tiles = new Array();
+            for (var x = 0; x < engine.serverParameters.worldSizeX; x++) {
+                engine.tiles[x] = new Array();
+                for (var y = 0; y < engine.serverParameters.worldSizeY; y++) {
+                    engine.tiles[x][y] = new WorldTile();
+                }
+            }
+            //#endregion
+            //#region Calculating neighbors
+            var xSize = engine.tileSize;
+            var ySize = xSize / 1.732; // copied from drawGrid
+            for (var x = 0; x < engine.serverParameters.worldSizeX; x++) {
+                for (var y = 0; y < engine.serverParameters.worldSizeY; y++) {
+                    var tmp = engine.tiles[x][y];
+                    var mod = y % 2;
+                    tmp.matrixX = x;
+                    tmp.matrixY = y;
+                    tmp.neighbors = new Array();
+                    if (x != 0) {
+                        tmp.neighbors.push(engine.tiles[x - 1][y]);
+                        tmp.neighborW = engine.tiles[x - 1][y];
+                    }
+                    if (x != engine.serverParameters.worldSizeX - 1) {
+                        tmp.neighbors.push(engine.tiles[x + 1][y]);
+                        tmp.neighborE = engine.tiles[x + 1][y];
+                    }
+                    if (mod == 0) {
+                        tmp.neighbors.push(engine.tiles[x][y + 1]);
+                        tmp.neighborSE = engine.tiles[x][y + 1];
+                        if (x != 0) {
+                            tmp.neighbors.push(engine.tiles[x - 1][y + 1]);
+                            tmp.neighborSW = engine.tiles[x - 1][y + 1];
+                        }
+                        if (y != 0) {
+                            tmp.neighbors.push(engine.tiles[x][y - 1]);
+                            tmp.neighborNE = engine.tiles[x][y - 1];
+                            if (x != 0) {
+                                tmp.neighbors.push(engine.tiles[x - 1][y - 1]);
+                                tmp.neighborNW = engine.tiles[x - 1][y - 1];
+                            }
+                        }
+                    }
+                    else {
+                        tmp.neighbors.push(engine.tiles[x][y - 1]);
+                        tmp.neighborNW = engine.tiles[x][y - 1];
+                        if (x != engine.serverParameters.worldSizeX - 1) {
+                            tmp.neighbors.push(engine.tiles[x + 1][y - 1]);
+                            tmp.neighborNE = engine.tiles[x + 1][y - 1];
+                        }
+                        if (y != engine.serverParameters.worldSizeY - 1) {
+                            tmp.neighbors.push(engine.tiles[x][y + 1]);
+                            tmp.neighborSW = engine.tiles[x][y + 1];
+                            if (x != engine.serverParameters.worldSizeX - 1) {
+                                tmp.neighbors.push(engine.tiles[x + 1][y + 1]);
+                                tmp.neighborSE = engine.tiles[x + 1][y + 1]
+                            }
+                        }
+                    }
+
+                }
+            }
+            //#endregion
+        }
+
+        /// Returns the WorldTile that is under the mouse cursor
+        function getHoveredTile(mouseEventX, mouseEventY) {
+            var xSize = engine.tileSize;
+            var ySize = xSize / 1.732; // copied from drawGrid
+
+            // algorithm summary:
+            // based on mouse coordinates, we retrieve the 4 tiles that surround the cursor
+            // then, for each candidate, we check the precise distance
+            // between hexagon center and cursor
+            var minTileX = -1 + Math.floor((mouseEventX - 10) / (2 * xSize));
+            var maxTileX = minTileX + 1;
+            minTileX = constrainNumber(minTileX, 0, engine.serverParameters.worldSizeX - 1);
+            maxTileX = constrainNumber(maxTileX, 0, engine.serverParameters.worldSizeX - 1);
+            var minTileY = Math.floor((mouseEventY - 10 - ySize) / (3 * ySize));
+            var maxTileY = minTileY + 1;
+            minTileY = constrainNumber(minTileY, 0, engine.serverParameters.worldSizeY - 1);
+            maxTileY = constrainNumber(maxTileY, 0, engine.serverParameters.worldSizeY - 1);
+
+            var nearestCandidate = new Array();
+            nearestCandidate.push(engine.tiles[minTileX][minTileY]);
+            nearestCandidate.push(engine.tiles[minTileX][maxTileY]);
+            nearestCandidate.push(engine.tiles[maxTileX][minTileY]);
+            nearestCandidate.push(engine.tiles[maxTileX][maxTileY]);
+            var nearestTile = null;
+            var nearestDistance = 1 << 30; // big number --> we want the first candidate to be always selected
+            nearestCandidate.forEach(
+                function (tmp) {
+                    var deltaX = (mouseEventX - tmp.centerX);
+                    var deltaY = (mouseEventY - tmp.centerY);
+                    var dist = deltaX * deltaX + deltaY * deltaY;
+                    if (dist < nearestDistance) {
+                        nearestTile = tmp;
+                        nearestDistance = dist;
+                    }
+                });
+            return nearestTile; // typeof nearestTile == WorldTile
+        }
+
+        /// If left click --> selects one unit on the grid.
+        /// If right click --> gives an order to the selected unit.
+        function topLayer_onClick(mouseEventX, mouseEventY, rightClick) {
+            if (!rightClick) {
+                // event is a left click
+                // deselect all units
+                engine.units.forEach(
+                    function (unit) {
+                        unit.selected = false;
+                    });
+                engine.selectedUnit = null;
+                // find hovered unit and select it
+                var hoveredTile = getHoveredTile(mouseEventX, mouseEventY);
+                if (hoveredTile.unit != null) {
+                    hoveredTile.unit.selected = true;
+                    engine.selectedUnit = hoveredTile.unit;
+                    // compute range around selected unit
+                    var withinRange = new Array();
+                    withinRange.push(hoveredTile);
+                    for (var unitRange = 0; unitRange < engine.serverParameters.unitRange; unitRange++) {
+                        var nextRange = new Array();
+                        withinRange.forEach(
+                            function (tile) {
+                                if (nextRange.indexOf(tile) == -1) nextRange.push(tile);
+                                tile.neighbors.forEach(
+                                    function (neighbor) {
+                                        if (nextRange.indexOf(neighbor) == -1) nextRange.push(neighbor);
+                                    });
+                            });
+                        withinRange = nextRange;
+                    }
+                    hoveredTile.unit.range = withinRange;
+                }
+            }
+            else {
+                // event is a right click
+                if (engine.selectedUnit != null) {
+                    var hoveredTile = getHoveredTile(mouseEventX, mouseEventY);
+                    if (engine.selectedUnit.range.indexOf(hoveredTile) != -1) {
+                        // hovered tile is within range from the selected tile --> allow order
+                        if (hoveredTile.unit != null) {
+                            if ((hoveredTile.unit === engine.selectedUnit) || (hoveredTile.unit.team == engine.selectedUnit.team)) {
+                                cancelOrder(engine.selectedUnit);
+                            }
+                            else {
+                                createAttackOrder(engine.selectedUnit, hoveredTile);
+                            }
+                        }
+                        else {
+                            createMoveOrder(engine.selectedUnit, hoveredTile);
+                        }
+                    }
+                }
+            }
+            drawTeams();
+            drawSelection();
+        }
+
+        //#region Game rules
+
+        function cancelOrder(unit) {
+            unit.moveOrder = null;
+            unit.attackOrder = null;
+            unit.hasOrder = false;
+        }
+
+        function createAttackOrder(unit, tile) {
+            unit.moveOrder = null;
+            unit.attackOrder = tile;
+            unit.hasOrder = true;
+        }
+
+        function createMoveOrder(unit, tile) {
+            unit.attackOrder = null;
+            unit.moveOrder = tile;
+            unit.hasOrder = true;
+        }
+        //#endregion
+
+        //#region Rendering
+
+        // Resizes canvas and computes tile centers again
+        function applyZoom() {
+            var xSize = engine.tileSize;
+            var ySize = xSize / 1.732; // copied from drawGrid
+            var newWidth = 2 * xSize * engine.serverParameters.worldSizeX + xSize + 20;
+            var newHeight = 3 * ySize * engine.serverParameters.worldSizeY + ySize + 20;
+
+            var allCanvas = document.getElementsByTagName("canvas");
+            for (var canvasIter = 0; canvasIter < allCanvas.length; canvasIter++) {
+                allCanvas[canvasIter].width = newWidth; // This is a hard reset of all canvas and is quite time consumming.
+                allCanvas[canvasIter].height = newHeight; // Hopefully, users won't zoom in and out too much.
+                // After a canvas resize, transformations are lost. We need to apply them again.
+                var context = allCanvas[canvasIter].getContext('2d');
+                context.translate(0.5, 0.5); // translation prevents anti-aliasing.
+            }
+            for (var x = 0; x < engine.serverParameters.worldSizeX; x++) {
+                for (var y = 0; y < engine.serverParameters.worldSizeY; y++) {
+                    var tmp = engine.tiles[x][y];
+                    var mod = y % 2;
+                    tmp.centerX = 10.0 + xSize * 1.0 + xSize * 2.0 * x + xSize * mod;
+                    tmp.centerY = 10.0 + ySize * 2.0 + ySize * 3.0 * y;
+                }
+            }
+            drawGrid();
+            drawTeams();
+            drawSelection();
+        }
+
+        /// Draws 1 white haxagon on top of the selected unit.
+        /// The CSS makes it blink so that it appears that background (team layer) is blinking.
+        /// Also displays range arround selected tile and unit orders.
+        function drawSelection() {
+            var selectionLayer = document.getElementById('selectionLayer');
+            var selectionContext = selectionLayer.getContext('2d');
+            selectionContext.clearRect(-0.5, -0.5, selectionLayer.width, selectionLayer.height);
+            var rangeLayer = document.getElementById('rangeLayer');
+            var rangeContext = rangeLayer.getContext('2d');
+            rangeContext.clearRect(-0.5, -0.5, rangeLayer.width, rangeLayer.height);
+            var orderLayer = document.getElementById('orderLayer');
+            var orderContext = orderLayer.getContext('2d');
+            orderContext.clearRect(-0.5, -0.5, orderLayer.width, orderLayer.height);
+            selectionLayer.className = "";
+
+            engine.units.forEach(
+                function (unit) {
+                    if (unit.selected) {
+                        drawOneFilledHex(selectionContext, unit.position.matrixX, unit.position.matrixY, 6, "#fff");
+                        selectionLayer.className = "blinking";
+                        unit.range.forEach(
+                            function (tile) {
+                                drawOneFilledHex(rangeContext, tile.matrixX, tile.matrixY, 6, "#ffa"); // yellow
+                            });
+                        if (unit.moveOrder != null) {
+                            var orderVectorX = unit.moveOrder.centerX - unit.position.centerX;
+                            var orderVectorY = unit.moveOrder.centerY - unit.position.centerY;
+                            // Make vector unitary
+                            var orderVectorLength = Math.sqrt(orderVectorX * orderVectorX + orderVectorY * orderVectorY);
+                            orderVectorX /= orderVectorLength;
+                            orderVectorY /= orderVectorLength;
+                            // Draw movement arrows
+                            orderContext.beginPath();
+                            orderContext.moveTo(unit.position.centerX, unit.position.centerY);
+                            orderContext.lineTo(unit.moveOrder.centerX, unit.moveOrder.centerY);
+                            orderContext.moveTo(
+                                unit.moveOrder.centerX - 1.3 * engine.tileSize * orderVectorX + engine.tileSize * orderVectorY,
+                                unit.moveOrder.centerY - 1.3 * engine.tileSize * orderVectorY - engine.tileSize * orderVectorX);
+                            orderContext.lineTo(
+                                unit.moveOrder.centerX,
+                                unit.moveOrder.centerY);
+                            orderContext.lineTo(
+                                unit.moveOrder.centerX - 1.3 * engine.tileSize * orderVectorX - engine.tileSize * orderVectorY,
+                                unit.moveOrder.centerY - 1.3 * engine.tileSize * orderVectorY + engine.tileSize * orderVectorX);
+                            orderContext.strokeStyle = "#000";
+                            orderContext.lineWidth = engine.tileSize / 3.0;
+                            orderContext.stroke();
+                        }
+                        if (unit.attackOrder != null) {
+                            // Draw a circle around the targeted unit.
+                            orderContext.beginPath();
+                            orderContext.arc(unit.attackOrder.centerX, unit.attackOrder.centerY,
+                                1.8 * engine.tileSize, 0, 2.0 * Math.PI);
+                            orderContext.moveTo(
+                                unit.attackOrder.centerX + 1.1 * engine.tileSize,
+                                unit.attackOrder.centerY
+                                );
+                            orderContext.lineTo(
+                                unit.attackOrder.centerX + 2.5 * engine.tileSize,
+                                unit.attackOrder.centerY
+                                );
+                            orderContext.moveTo(
+                                unit.attackOrder.centerX - 1.1 * engine.tileSize,
+                                unit.attackOrder.centerY
+                                );
+                            orderContext.lineTo(
+                                unit.attackOrder.centerX - 2.5 * engine.tileSize,
+                                unit.attackOrder.centerY
+                                );
+                            orderContext.moveTo(
+                                unit.attackOrder.centerX,
+                                unit.attackOrder.centerY + 1.1 * engine.tileSize
+                                );
+                            orderContext.lineTo(
+                                unit.attackOrder.centerX,
+                                unit.attackOrder.centerY + 2.5 * engine.tileSize
+                                );
+                            orderContext.moveTo(
+                                unit.attackOrder.centerX,
+                                unit.attackOrder.centerY - 1.1 * engine.tileSize
+                                );
+                            orderContext.lineTo(
+                                unit.attackOrder.centerX,
+                                unit.attackOrder.centerY - 2.5 * engine.tileSize
+                                );
+                            orderContext.strokeStyle = "#000";
+                            orderContext.lineWidth = engine.tileSize / 3.0;
+                            orderContext.stroke();
+                        }
+                    }
+                });
+        }
+
+        /// Draws units in the team layer. Units with full HP have a full hexagon. Lower HP get partial hexagon.
+        function drawTeams() {
+            var layer = document.getElementById('teamLayer');
+            var context = layer.getContext('2d');
+            context.clearRect(-0.5, -0.5, layer.width, layer.height);
+            engine.units.forEach(
+                function (unit) {
+                    if (unit.hasOrder) drawOneFilledHex(context, unit.position.matrixX, unit.position.matrixY, unit.hp, engine.teamColorsGrayed[unit.team]);
+                    else drawOneFilledHex(context, unit.position.matrixX, unit.position.matrixY, unit.hp, engine.teamColorsBright[unit.team]);
+                });
+        }
+
+        /// Draws the gray hexagonal grid
+        function drawGrid() {
+            var layer = document.getElementById('gridLayer');
+            var context = layer.getContext('2d');
+            context.clearRect(-0.5, -0.5, layer.width, layer.height);
+            for (var x = 0; x < engine.serverParameters.worldSizeX; x++) {
+                for (var y = 0; y < engine.serverParameters.worldSizeY; y++) {
+                    drawOneHex(context, x, y, "#ccc"); // light gray
+                }
+            }
+        }
+
+        /// Draws one hexagon from the grid (edges only)
+        function drawOneHex(context, x, y, color) {
+            // Only partial draw for grid borders
+            var mod = y % 2;
+            var xSize = engine.tileSize;
+            var ySize = xSize / 1.732; // divide by (sqrt(3)) to draw a regular hexagon
+            context.beginPath();
+            context.moveTo(10 + xSize * 2 + xSize * 2 * x + xSize * mod, 10 + ySize * 1 + ySize * 3 * y);
+            if ((x == engine.serverParameters.worldSizeX - 1) && (mod == 1)) {
+                context.moveTo(10 + xSize * 1 + xSize * 2 * x + xSize * mod, 10 + ySize * 0 + ySize * 3 * y);
+                context.lineTo(10 + xSize * 2 + xSize * 2 * x + xSize * mod, 10 + ySize * 1 + ySize * 3 * y);
+            }
+            context.lineTo(10 + xSize * 2 + xSize * 2 * x + xSize * mod, 10 + ySize * 3 + ySize * 3 * y);
+            context.lineTo(10 + xSize * 1 + xSize * 2 * x + xSize * mod, 10 + ySize * 4 + ySize * 3 * y);
+            context.lineTo(10 + xSize * 0 + xSize * 2 * x + xSize * mod, 10 + ySize * 3 + ySize * 3 * y);
+            context.lineTo(10 + xSize * 0 + xSize * 2 * x + xSize * mod, 10 + ySize * 1 + ySize * 3 * y);
+            if ((y == 0) || ((x == 0) && (mod == 0))) {
+                context.lineTo(10 + xSize * 1 + xSize * 2 * x + xSize * mod, 10 + ySize * 0 + ySize * 3 * y);
+                if (y == 0) context.closePath();
+            }
+            context.strokeStyle = color;
+            context.stroke();
+        }
+
+        /// Draws one filled hexagon (usually one unit from a team)
+        function drawOneFilledHex(context, x, y, hp, color) {
+            // Only partial draw for grid borders
+            var mod = y % 2;
+            var xSize = engine.tileSize;
+            var ySize = xSize / 1.732; // divide by (sqrt(3)) to draw a regular hexagon
+            context.beginPath();
+            context.moveTo(10 + xSize * 1 + xSize * 2 * x + xSize * mod, 10 + ySize * 2 + ySize * 3 * y);
+            context.lineTo(10 + xSize * 1 + xSize * 2 * x + xSize * mod, 10 + ySize * 0 + ySize * 3 * y);
+            context.lineTo(10 + xSize * 2 + xSize * 2 * x + xSize * mod, 10 + ySize * 1 + ySize * 3 * y);
+            if (hp > 1) context.lineTo(10 + xSize * 2 + xSize * 2 * x + xSize * mod, 10 + ySize * 3 + ySize * 3 * y);
+            if (hp > 2) context.lineTo(10 + xSize * 1 + xSize * 2 * x + xSize * mod, 10 + ySize * 4 + ySize * 3 * y);
+            if (hp > 3) context.lineTo(10 + xSize * 0 + xSize * 2 * x + xSize * mod, 10 + ySize * 3 + ySize * 3 * y);
+            if (hp > 4) context.lineTo(10 + xSize * 0 + xSize * 2 * x + xSize * mod, 10 + ySize * 1 + ySize * 3 * y);
+            if (hp > 5) context.lineTo(10 + xSize * 1 + xSize * 2 * x + xSize * mod, 10 + ySize * 0 + ySize * 3 * y);
+            context.closePath();
+            context.fillStyle = color;
+            context.fill();
+        }
+        //#endregion
+
+        //#region Utility Classes
+
+        function ArmyUnit() {
+            this.position = null; // type is WorldTile
+            this.team = 0;
+            this.hp = 0; // max HP = 6 ; 0 = dead
+            this.selected = false;
+            this.range = null; // list of all the World Tiles that are within range
+            this.hasOrder = false;
+            this.attackOrder = null;
+            this.moveOrder = null;
+            this.toJSON = function () {
+                // This function is automatically called by JSON.stringify
+                // We only stringify when we send unit orders to server
+                return { pos: this.position, 
+                    ao: this.attackOrder, mo: this.moveOrder, 
+                    team: this.team, hp: this.hp
+                };
+            };
+        }
+
+        function WorldTile() {
+            this.centerX = 0.0; // in pixels
+            this.centerY = 0.0;
+            this.matrixX = 0; // in integer units (usually [0, 150])
+            this.matrixY = 0;
+            this.unit = null; // type is ArmyUnit
+            this.neighbors = null; // all neighboring WorldTiles
+            this.neighborNW = null;
+            this.neighborNE = null;
+            this.neighborW = null;
+            this.neighborE = null;
+            this.neighborSW = null;
+            this.neighborSE = null;
+            this.toJSON = function () {
+                return { x: this.matrixX, y: this.matrixY };
+            };
+        }
+        //#endregion
+
+        //#region Engine
+
+        function GameEngine() {
+            this.tileSize = 6.0; // radius, in pixels, of a tile rendered on screen
+            this.serverParameters = null;
+            this.tiles = null; // array of all World Tiles
+            this.units = null; // array of all Army Units
+            this.rng = new RNG(); // random number generator. See math stuff.
+            this.selectedUnit = null;
+
+            this.teamColorsBright = ["#f22", "#04f", "#4d0", "#a0f"];
+            this.teamColorsGrayed = ["#777", "#777", "#777", "#777"];
+        }
+        GameEngine.prototype.dump = function (txt) {
+            console.debug(txt);
+        };
+        GameEngine.prototype.sendAjax = function (path, param, callback) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', 'http://localhost:15881/' + path, true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState == 4) {
+                    callback(xhr.responseText);
+                }
+            };
+            xhr.send(param);
+        };
+        GameEngine.prototype.start = function () {
+            if (!document.getElementById('gridLayer').getContext) alert('You need a modern browser to play this game.');
+            else {
+                var startTime = new Date().getTime();
+                engine.sendAjax("getEngineConfig", null, engine.loadServerParameters);
+                //#region Performance tests
+                //for (var loop = 0; loop < 10000000; loop++) {
+                //    getHoveredTile(100, 100);
+                //    // 10M loops = 2.9s on IE11
+                //    // 10M loops = 1.8s on Chrome43
+                //}
+                //for (var loop = 0; loop < 100; loop++) {
+                //    drawGrid();
+                //    // 100 loops = 16s on IE11
+                //    // 100 loops = 3.5s on Chrome43
+                //}
+                //for (var loop = 0; loop < 1000; loop++) {
+                //    drawTeams();
+                //    // 1000 loops = 6.0s on IE11
+                //    // 1000 loops = 2.6s on Chrome43
+                //}
+                //for (var loop = 0; loop < 1000; loop++) {
+                //    initTiles();
+                //    // 1000 loops = 3.5s on IE11
+                //    // 1000 loops = 2.4s on Chrome43
+                //}
+                //#endregions
+                var endTime = new Date().getTime();
+                var renderTime = endTime - startTime;
+                //renderTimeDiv.innerHTML = "Render time: " + renderTime;
+            }
+        };
+        GameEngine.prototype.loadServerParameters = function (params) {
+            engine.serverParameters = JSON.parse(params);
+            initTiles();
+            engine.sendAjax("getBoard", null, engine.loadBoard);
+        };
+        GameEngine.prototype.loadBoard = function (params) {
+            engine.tiles.forEach(
+                function (tile) {
+                    tile.unit = null;
+                });
+            var board = JSON.parse(params);
+            engine.units = new Array();
+            board.forEach(
+                function (unit) {
+                    var newUnit = new ArmyUnit();
+                    newUnit.hp = unit.hp;
+                    newUnit.team = unit.team;
+                    newUnit.position = engine.tiles[unit.posX][unit.posY];
+                    engine.tiles[unit.posX][unit.posY].unit = newUnit;
+                    engine.units.push(newUnit);
+                });
+            applyZoom();
+            registerEvents();
+        };
+
+        var engine = new GameEngine();
+        //#endregion
+
+    </script>
+
+</body>
+</html>
