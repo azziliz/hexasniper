@@ -555,6 +555,7 @@
             this.neighborE = null;
             this.neighborSW = null;
             this.neighborSE = null;
+            this.movingCount = 0;
             this.toJSON = function () {
                 return { x: this.matrixX, y: this.matrixY };
             };
@@ -572,6 +573,7 @@
             this.rng = new RNG(); // random number generator. See math stuff.
             this.selectedUnit = null;
             this.ordersSent = false;
+            this.targetedTiles = null;
 
             this.teamColorsBright = ["#f22", "#04f", "#4d0", "#a0f"];
             this.teamColorsGrayed = ["#777", "#777", "#777", "#777"];
@@ -646,13 +648,14 @@
                     engine.tiles[unit.posX][unit.posY].unit = newUnit;
                     engine.units.push(newUnit);
                 });
-            applyZoom();
             engine.sendAjax("login", null, engine.login, true);
         };
         GameEngine.prototype.login = function (params) {
-            if (JSON.parse(params).error) alert(JSON.parse(params).error);
+            var ret = JSON.parse(params);
+            if (ret.error) alert(ret.error);
             else {
-                engine.authentication = JSON.parse(params);
+                engine.authentication = ret;
+                applyZoom();
                 registerEvents();
             }
         };
@@ -664,9 +667,78 @@
                     function (unit) {
                         if (unit.team == engine.authentication.player.team) unitsToSend.push(unit);
                     });
-                engine.sendAjax("giveOrders", JSON.stringify({ authentication: engine.authentication, orders: unitsToSend }), engine.ordersFeedback, true);
+                engine.sendAjax("orders", JSON.stringify({ authentication: engine.authentication, orders: unitsToSend }), engine.ordersFeedback, true);
             }
-        }
+        };
+        GameEngine.prototype.ordersFeedback = function (params) {
+            var ret = JSON.parse(params);
+            if (ret.error) alert(ret.error);
+            else if (ret.standby) setTimeout(function () {
+                engine.sendAjax("feedback", JSON.stringify({ authentication: engine.authentication }), engine.ordersFeedback, true)
+            }, 5000);
+            else {
+                engine.applyOrders(ret);
+            }
+        };
+        GameEngine.prototype.applyOrders = function (params) {
+            console.debug(params);
+            engine.tiles.forEach(
+                function (tile) {
+                    tile.unit = null;
+                    tile.movingCount = 0;
+                });
+            engine.targetedTiles = new Array();
+            engine.units = new Array();
+            params.forEach(
+                function (unit) {
+                    var newUnit = new ArmyUnit();
+                    newUnit.hp = unit.hp;
+                    newUnit.team = unit.team;
+                    newUnit.position = engine.tiles[unit.posX][unit.posY];
+                    newUnit.attackOrder = (unit.ao == null ? null : engine.tiles[unit.ao.x][unit.ao.y]);
+                    newUnit.moveOrder = (unit.mo == null ? null : engine.tiles[unit.mo.x][unit.mo.y]);
+                    engine.tiles[unit.posX][unit.posY].unit = newUnit;
+                    engine.units.push(newUnit);
+                });
+            // shoot
+            engine.units.forEach(
+                function (sniper) {
+                    if (sniper.attackOrder != null) {
+                        sniper.attackOrder.unit.hp -= 2;
+                        sniper.attackOrder = null;
+                    }
+                });
+            // bring out your dead
+            var newUnitArray = new Array();
+            engine.units.forEach(
+                function (alive) {
+                    if (alive.hp <= 0) {
+                        alive.position.unit = null;
+                        alive.position = null;
+                        alive.attackOrder = null;
+                        alive.moveOrder = null;
+                        alive = null;
+                    }
+                    else newUnitArray.push(alive);
+                });
+            engine.units = newUnitArray;
+            // move
+            // removing move orders if 2 (or more) units target the same tile
+            engine.units.forEach(
+                function (moving) {
+                    if (moving.moveOrder != null) {
+                        moving.moveOrder.movingCount++;
+                        if (engine.targetedTiles.indexOf(moving.moveOrder) == -1) engine.targetedTiles.push(moving.moveOrder);
+                    }
+                });
+            engine.targetedTiles.forEach(
+                function (targetedTile) {
+
+                });
+            console.debug(engine.targetedTiles);
+            engine.ordersSent = false;
+            applyZoom();
+        };
 
         var engine = new GameEngine();
         //#endregion
