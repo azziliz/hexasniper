@@ -241,27 +241,32 @@
                         unit.selected = false;
                     });
                 engine.selectedUnit = null;
-                // find hovered unit and select it
-                var hoveredTile = getHoveredTile(mouseEventX, mouseEventY);
-                if (hoveredTile.unit != null) {
-                    hoveredTile.unit.selected = true;
-                    engine.selectedUnit = hoveredTile.unit;
-                    // compute range around selected unit
-                    var withinRange = new Array();
-                    withinRange.push(hoveredTile);
-                    for (var unitRange = 0; unitRange < engine.serverParameters.unitRange; unitRange++) {
-                        var nextRange = new Array();
-                        withinRange.forEach(
-                            function (tile) {
-                                if (nextRange.indexOf(tile) == -1) nextRange.push(tile);
-                                tile.neighbors.forEach(
-                                    function (neighbor) {
-                                        if (nextRange.indexOf(neighbor) == -1) nextRange.push(neighbor);
-                                    });
-                            });
-                        withinRange = nextRange;
+                if (checkOrdersDone()) {
+                    engine.ordersDone();
+                }
+                else {
+                    // find hovered unit and select it (if unit is mine)
+                    var hoveredTile = getHoveredTile(mouseEventX, mouseEventY);
+                    if ((hoveredTile.unit != null) && (hoveredTile.unit.team == engine.authentication.player.team)) {
+                        hoveredTile.unit.selected = true;
+                        engine.selectedUnit = hoveredTile.unit;
+                        // compute range around selected unit
+                        var withinRange = new Array();
+                        withinRange.push(hoveredTile);
+                        for (var unitRange = 0; unitRange < engine.serverParameters.unitRange; unitRange++) {
+                            var nextRange = new Array();
+                            withinRange.forEach(
+                                function (tile) {
+                                    if (nextRange.indexOf(tile) == -1) nextRange.push(tile);
+                                    tile.neighbors.forEach(
+                                        function (neighbor) {
+                                            if (nextRange.indexOf(neighbor) == -1) nextRange.push(neighbor);
+                                        });
+                                });
+                            withinRange = nextRange;
+                        }
+                        hoveredTile.unit.range = withinRange;
                     }
-                    hoveredTile.unit.range = withinRange;
                 }
             }
             else {
@@ -306,6 +311,15 @@
             unit.attackOrder = null;
             unit.moveOrder = tile;
             unit.hasOrder = true;
+        }
+
+        function checkOrdersDone() {
+            var ret = true;
+            engine.units.forEach(
+                function (unit) {
+                    if ((unit.team == engine.authentication.player.team) && (!unit.hasOrder)) ret = false;
+                });
+            return ret;
         }
         //#endregion
 
@@ -557,6 +571,7 @@
             this.units = null; // array of all Army Units
             this.rng = new RNG(); // random number generator. See math stuff.
             this.selectedUnit = null;
+            this.ordersSent = false;
 
             this.teamColorsBright = ["#f22", "#04f", "#4d0", "#a0f"];
             this.teamColorsGrayed = ["#777", "#777", "#777", "#777"];
@@ -638,10 +653,20 @@
             if (JSON.parse(params).error) alert(JSON.parse(params).error);
             else {
                 engine.authentication = JSON.parse(params);
-                console.debug(engine);
                 registerEvents();
             }
         };
+        GameEngine.prototype.ordersDone = function () {
+            if (!engine.ordersSent) {
+                engine.ordersSent = true;
+                var unitsToSend = new Array();
+                engine.units.forEach(
+                    function (unit) {
+                        if (unit.team == engine.authentication.player.team) unitsToSend.push(unit);
+                    });
+                engine.sendAjax("giveOrders", JSON.stringify({ authentication: engine.authentication, orders: unitsToSend }), engine.ordersFeedback, true);
+            }
+        }
 
         var engine = new GameEngine();
         //#endregion

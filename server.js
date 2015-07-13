@@ -43,7 +43,7 @@ function buildInitialBoard() {
             });
         if (!occupiedTile) {
             var newUnit = new ArmyUnit();
-            newUnit.hp = Math.floor(1 + 12 * Math.random());
+            newUnit.hp = 12; //Math.floor(1 + 12 * Math.random());
             newUnit.team = i % currentGameParameters.playerCount;
             newUnit.posX = coordX;
             newUnit.posY = coordY;
@@ -104,8 +104,13 @@ require('http').createServer(function (request, response) {
                     compressAndSend(request, response, 'application/json', JSON.stringify({ game: currentGameParameters.uniqueID, player: player }));
                 }
                 else {
-                    compressAndSend(request, response, 'application/json', JSON.stringify({ error: 'game is full' }));
+                    compressAndSend(request, response, 'application/json', JSON.stringify({ error: 'Game is full.' }));
                 }
+            }
+            else if (request.url == '/logoff') {
+                //TODO
+                response.writeHead(404);
+                response.end();
             }
             else {
                 response.writeHead(404);
