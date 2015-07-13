@@ -585,11 +585,13 @@
             var xhr = new XMLHttpRequest();
             xhr.open('POST', window.location.href + path, async);
             xhr.setRequestHeader("Content-Type", "application/json");
-            xhr.onreadystatechange = function () {
-                if (xhr.readyState == 4) {
-                    callback(xhr.responseText);
-                }
-            };
+            if (callback != null) {
+                xhr.onreadystatechange = function () {
+                    if (xhr.readyState == 4) {
+                        callback(xhr.responseText);
+                    }
+                };
+            }
             xhr.send(param);
         };
         GameEngine.prototype.start = function () {
@@ -675,7 +677,7 @@
             if (ret.error) alert(ret.error);
             else if (ret.standby) setTimeout(function () {
                 engine.sendAjax("feedback", JSON.stringify({ authentication: engine.authentication }), engine.ordersFeedback, true)
-            }, 5000);
+            }, 500);
             else {
                 engine.applyOrders(ret);
             }
@@ -733,8 +735,25 @@
                 });
             engine.targetedTiles.forEach(
                 function (targetedTile) {
-
+                    if (targetedTile.movingCount > 1) {
+                        engine.units.forEach(
+                            function (moving) {
+                                if (moving.moveOrder == targetedTile) {
+                                    moving.moveOrder = null;
+                                }
+                            });
+                    }
                 });
+            engine.units.forEach(
+                function (moving) {
+                    if (moving.moveOrder != null) {
+                        moving.position.unit = null;
+                        moving.position = engine.tiles[moving.moveOrder.matrixX][moving.moveOrder.matrixY];
+                        engine.tiles[moving.moveOrder.matrixX][moving.moveOrder.matrixY].unit = moving;
+                        moving.moveOrder = null;
+                    }
+                });
+            engine.sendAjax("newBoard", JSON.stringify({ authentication: engine.authentication, board: engine.units }), null, true);
             console.debug(engine.targetedTiles);
             engine.ordersSent = false;
             applyZoom();

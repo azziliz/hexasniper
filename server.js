@@ -1,3 +1,5 @@
+"use strict";
+
 function GameParameters() {
     this.worldSizeX = 30; //156; // number of horizontal tiles. Has to be an even number
     this.worldSizeY = 20; //100; // number of vertical tiles. Has to be an even number
@@ -7,6 +9,7 @@ function GameParameters() {
     this.units = null;
     this.players = null;
     this.uniqueID = 0.0;
+    this.listeningToOrders = true;
 }
 var currentGameParameters = new GameParameters();
 
@@ -69,6 +72,7 @@ function checkEndTurn(request, response, playerTeam) {
             });
         if (allFeedbackGiven) {
             //TODO listenToNewBoard();
+            currentGameParameters.listeningToOrders = false;
         }
     }
     else {
@@ -119,6 +123,30 @@ require('http').createServer(function (request, response) {
                 response.writeHead(200, { 'Content-Type': 'text/plain' });
                 response.end("OK");
             }
+            else if (request.url == '/newBoard') {
+                //TODO: check consistency between new boards
+                if (!currentGameParameters.listeningToOrders) {
+                    currentGameParameters.players.forEach(
+                        function (player) {
+                            player.ordersGiven = false;
+                            player.feedbackGiven = false;
+                        });
+                    currentGameParameters.units = new Array();
+                    var postData = JSON.parse(buffer);
+                    postData.board.forEach(
+                        function (unit) {
+                            var newUnit = new ArmyUnit();
+                            newUnit.hp = unit.hp;
+                            newUnit.team = unit.team;
+                            newUnit.posX = unit.pos.x;
+                            newUnit.posY = unit.pos.y;
+                            currentGameParameters.units.push(newUnit);
+                        });
+                    currentGameParameters.listeningToOrders = true;
+                }
+                response.writeHead(200, { 'Content-Type': 'text/plain' });
+                response.end("OK");
+            }
             else if (request.url == '/login') {
                 if (currentGameParameters.players.length < currentGameParameters.playerCount) {
                     var player = new Player();
@@ -139,6 +167,7 @@ require('http').createServer(function (request, response) {
                 response.end();
             }
             else if (request.url == '/orders') {
+                // TODO : handle "server not ready yet (listeningToOrders)
                 var postData = JSON.parse(buffer);
                 if (postData.authentication.game.uniqueID != currentGameParameters.uniqueID) {
                     response.writeHead(200, { 'Content-Type': 'application/json' });
@@ -180,7 +209,7 @@ require('http').createServer(function (request, response) {
                             checkEndTurn(request, response, playerTeam);
                         }
                     }
-                }      
+                }
             }
             else if (request.url == '/feedback') {
                 var postData = JSON.parse(buffer);
