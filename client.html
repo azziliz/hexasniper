@@ -627,7 +627,7 @@
             }
         };
         GameEngine.prototype.stop = function () {
-            engine.sendAjax("logoff", JSON.stringify(engine.authentication), engine.dump, false);
+            engine.sendAjax("logoff", JSON.stringify({ authentication: engine.authentication }), engine.dump, false);
         };
         GameEngine.prototype.loadServerParameters = function (params) {
             engine.serverParameters = JSON.parse(params);
