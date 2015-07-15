@@ -1,9 +1,9 @@
 "use strict";
 
 function GameParameters() {
-    this.worldSizeX = 30; //156; // number of horizontal tiles. Has to be an even number
-    this.worldSizeY = 20; //100; // number of vertical tiles. Has to be an even number
-    this.playerCount = 3;
+    this.worldSizeX = 10; //156; // number of horizontal tiles. Has to be an even number
+    this.worldSizeY = 10; //100; // number of vertical tiles. Has to be an even number
+    this.playerCount = 2;
     this.initialUnitCount = 2; //600; // number of units per player at startup.
     this.unitRange = 5; //number of tiles around a unit, where the unit is able to shoot
     this.units = null;
@@ -18,8 +18,8 @@ function ArmyUnit() {
     this.posY = 0;
     this.team = 0;
     this.hp = 0;
-    this.ao = false;
-    this.mo = false;
+    this.ao = null;
+    this.mo = null;
 }
 
 function Player() {
@@ -72,6 +72,7 @@ function checkEndTurn(request, response, correctAuth) {
             });
         if (allFeedbackGiven) {
             //TODO listenToNewBoard();
+            console.log("all feedback given");
             currentGameParameters.listeningToOrders = false;
         }
     }
@@ -96,7 +97,7 @@ function compressAndSend(request, response, contType, txt) {
 }
 
 require('http').createServer(function (request, response) {
-    if (request.url != '/feedback') console.log(request.url);
+    if (request.url != '/feedback') console.log("".concat((new Date()).toTimeString(), request.url));
     if (request.url == '/favicon.ico') {
         response.writeHead(404);
         response.end();
@@ -124,6 +125,7 @@ require('http').createServer(function (request, response) {
                 response.end("OK");
             }
             else if (request.url == '/newBoard') {
+                
                 //TODO: check consistency between new boards
                 if (!currentGameParameters.listeningToOrders) {
                     currentGameParameters.players.forEach(
@@ -142,6 +144,7 @@ require('http').createServer(function (request, response) {
                             newUnit.posY = unit.pos.y;
                             currentGameParameters.units.push(newUnit);
                         });
+                    //console.log(JSON.stringify(currentGameParameters.units));
                     currentGameParameters.listeningToOrders = true;
                 }
                 response.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -160,7 +163,6 @@ require('http').createServer(function (request, response) {
                     player.team = i; 
                     player.uniqueID = Math.random().toString(16);
                     currentGameParameters.players.push(player);
-                    console.log(currentGameParameters.players);
                     compressAndSend(request, response, 'application/json',
                         JSON.stringify({ game: { uniqueID: currentGameParameters.uniqueID }, player: player }));
                 }
@@ -171,8 +173,8 @@ require('http').createServer(function (request, response) {
             }
             else if (request.url == '/logoff') {
                 var postData = JSON.parse(buffer);
-                console.log("postData = ".concat(buffer));
-                console.log("currentGameParameters = ".concat(JSON.stringify(currentGameParameters)));
+                //console.log("postData = ".concat(buffer));
+                //console.log("currentGameParameters = ".concat(JSON.stringify(currentGameParameters)));
                 if ((postData == null) ||
                     (postData.authentication == null) ||
                     (postData.authentication.game == null) ||
@@ -187,7 +189,6 @@ require('http').createServer(function (request, response) {
                         function (currentPlayer) {
                             if ((currentPlayer.team == postData.authentication.player.team) && (currentPlayer.uniqueID == postData.authentication.player.uniqueID)) {
                                 correctAuth = currentPlayer;
-                                console.log("found = ".concat(JSON.stringify(correctAuth)));
                             }
                         });
                     if (correctAuth == null) {
@@ -195,28 +196,24 @@ require('http').createServer(function (request, response) {
                         response.end(JSON.stringify({ error: 'Wrong authentication.' }));
                     }
                     else {
-                        console.log("entering = ".concat(JSON.stringify(currentGameParameters.players)));
                         var newPlayers = new Array();
                         currentGameParameters.players.forEach(
                             function (player) {
                                 if (player.uniqueID != correctAuth.uniqueID) {
                                     newPlayers.push(player);
-                                    console.log("pushing = ".concat(JSON.stringify(player)));
                                 }
                             });
                         currentGameParameters.players = newPlayers;
-                        console.log("exiting = ".concat(JSON.stringify(currentGameParameters.players)));
                     }
                 }
-                console.log(currentGameParameters.players);
                 response.writeHead(200, { 'Content-Type': 'text/plain' });
                 response.end("OK");
             }
             else if (request.url == '/orders') {
                 // TODO : handle "server not ready yet (listeningToOrders)
-                var postData = JSON.parse(buffer);
                 console.log("postData = ".concat(buffer));
                 console.log("currentGameParameters = ".concat(JSON.stringify(currentGameParameters)));
+                var postData = JSON.parse(buffer);
                 if ((postData == null) ||
                     (postData.authentication == null) ||
                     (postData.authentication.game == null) ||
