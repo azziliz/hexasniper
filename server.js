@@ -97,7 +97,7 @@ function compressAndSend(request, response, contType, txt) {
 }
 
 require('http').createServer(function (request, response) {
-    if (request.url != '/feedback') console.log("".concat((new Date()).toTimeString(), request.url));
+    if (request.url != '/feedback') console.log("".concat((new Date()).toISOString(), " - ", request.url));
     if (request.url == '/favicon.ico') {
         response.writeHead(404);
         response.end();
