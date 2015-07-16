@@ -125,7 +125,7 @@ require('http').createServer(function (request, response) {
                 response.end("OK");
             }
             else if (request.url == '/newBoard') {
-                
+                //#region new board
                 //TODO: check consistency between new boards
                 if (!currentGameParameters.listeningToOrders) {
                     currentGameParameters.players.forEach(
@@ -149,8 +149,10 @@ require('http').createServer(function (request, response) {
                 }
                 response.writeHead(200, { 'Content-Type': 'text/plain' });
                 response.end("OK");
+                //#endregion
             }
             else if (request.url == '/login') {
+                //#region login
                 if (currentGameParameters.players.length < currentGameParameters.playerCount) {
                     var player = new Player();
                     var currentPlayersIds = new Array();
@@ -170,8 +172,10 @@ require('http').createServer(function (request, response) {
                     response.writeHead(200, { 'Content-Type': 'application/json' });
                     response.end(JSON.stringify({ error: 'Game is full.' }));
                 }
+                //#endregion
             }
             else if (request.url == '/logoff') {
+                //#region logoff
                 var postData = JSON.parse(buffer);
                 //console.log("postData = ".concat(buffer));
                 //console.log("currentGameParameters = ".concat(JSON.stringify(currentGameParameters)));
@@ -208,8 +212,10 @@ require('http').createServer(function (request, response) {
                 }
                 response.writeHead(200, { 'Content-Type': 'text/plain' });
                 response.end("OK");
+                //#endregion
             }
             else if (request.url == '/orders') {
+                //#region orders
                 // TODO : handle "server not ready yet (listeningToOrders)
                 console.log("postData = ".concat(buffer));
                 console.log("currentGameParameters = ".concat(JSON.stringify(currentGameParameters)));
@@ -264,8 +270,10 @@ require('http').createServer(function (request, response) {
                         }
                     }
                 }
+                //#endregion
             }
             else if (request.url == '/feedback') {
+                //#region Performance tests
                 var postData = JSON.parse(buffer);
                 if ((postData == null) ||
                     (postData.authentication == null) ||
@@ -290,6 +298,7 @@ require('http').createServer(function (request, response) {
                         checkEndTurn(request, response, correctAuth);
                     }
                 }
+                //#endregion
             }
             else {
                 response.writeHead(404);
