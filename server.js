@@ -1,5 +1,49 @@
 "use strict";
 
+//#region Utility Classes
+
+function Player() {
+    this.team = 0;
+    this.uniqueID = 0.0;
+    this.ordersGiven = false;
+    this.feedbackGiven = false;
+}
+
+function ArmyUnit() {
+    this.position = null; // type is WorldTile
+    this.team = 0;
+    this.hp = 0; // max HP = 12 ; 0 = dead
+    this.range = null; // list of all the World Tiles that are within range
+    this.attackOrder = null;
+    this.moveOrder = null;
+    this.toJSON = function () {
+        // This function is automatically called by JSON.stringify
+        // We only stringify when we send unit orders to server
+        return {
+            pos: this.position,
+            ao: this.attackOrder, mo: this.moveOrder,
+            team: this.team, hp: this.hp
+        };
+    };
+}
+
+function WorldTile() {
+    this.matrixX = 0; // in integer units (usually [0, 150])
+    this.matrixY = 0;
+    this.unit = null; // type is ArmyUnit
+    this.neighbors = null; // all neighboring WorldTiles
+    this.neighborNW = null;
+    this.neighborNE = null;
+    this.neighborW = null;
+    this.neighborE = null;
+    this.neighborSW = null;
+    this.neighborSE = null;
+    this.movingCount = 0;
+    this.toJSON = function () {
+        return { x: this.matrixX, y: this.matrixY };
+    };
+}
+
 function GameParameters() {
     this.worldSizeX = 10; //156; // number of horizontal tiles. Has to be an even number
     this.worldSizeY = 10; //100; // number of vertical tiles. Has to be an even number
@@ -13,20 +57,16 @@ function GameParameters() {
 }
 var currentGameParameters = new GameParameters();
 
-function ArmyUnit() {
+//#endregion
+
+
+function ArmyUnit_() {
     this.posX = 0;
     this.posY = 0;
     this.team = 0;
     this.hp = 0;
     this.ao = null;
     this.mo = null;
-}
-
-function Player() {
-    this.team = 0;
-    this.uniqueID = 0.0;
-    this.ordersGiven = false;
-    this.feedbackGiven = false;
 }
 
 function buildInitialBoard() {
@@ -45,7 +85,7 @@ function buildInitialBoard() {
                 }
             });
         if (!occupiedTile) {
-            var newUnit = new ArmyUnit();
+            var newUnit = new ArmyUnit_();
             newUnit.hp = 12; //Math.floor(1 + 12 * Math.random());
             newUnit.team = i % currentGameParameters.playerCount;
             newUnit.posX = coordX;
@@ -137,7 +177,7 @@ require('http').createServer(function (request, response) {
                     var postData = JSON.parse(buffer);
                     postData.board.forEach(
                         function (unit) {
-                            var newUnit = new ArmyUnit();
+                            var newUnit = new ArmyUnit_();
                             newUnit.hp = unit.hp;
                             newUnit.team = unit.team;
                             newUnit.posX = unit.pos.x;
