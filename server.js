@@ -85,8 +85,8 @@ function buildInitialBoard() {
                 }
             });
         if (!occupiedTile) {
-            var newUnit = new ArmyUnit_();
-            newUnit.hp = 12; //Math.floor(1 + 12 * Math.random());
+			var newUnit = new ArmyUnit_();
+            newUnit.hp = 12; 
             newUnit.team = i % currentGameParameters.playerCount;
             newUnit.posX = coordX;
             newUnit.posY = coordY;
