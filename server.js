@@ -7,6 +7,9 @@ function Player() {
     this.uniqueID = 0.0;
     this.ordersGiven = false;
     this.feedbackGiven = false;
+    this.toJSON = function () {
+        return { team: this.team, uniqueID: this.uniqueID };
+    };
 }
 
 function ArmyUnit() {
@@ -80,7 +83,7 @@ function buildInitialBoard() {
         var occupiedTile = false;
         currentGameParameters.units.forEach(
             function (unit) {
-                if ((unit.posX == coordX) && (unit.posY == coordY)) {
+                if ((unit.posX === coordX) && (unit.posY === coordY)) {
                     occupiedTile = true;
                 }
             });
@@ -136,8 +139,12 @@ function compressAndSend(request, response, contType, txt) {
     }
 }
 
+function log(txt) {
+    console.log(''.concat((new Date()).toISOString(), ' - ', txt));
+}
+
 require('http').createServer(function (request, response) {
-    if (request.url != '/feedback') console.log("".concat((new Date()).toISOString(), " - ", request.url));
+    //if (request.url != '/feedback') console.log("".concat((new Date()).toISOString(), " - ", request.url));
     if (request.url == '/favicon.ico') {
         response.writeHead(404);
         response.end();
@@ -157,6 +164,7 @@ require('http').createServer(function (request, response) {
                 response.end(JSON.stringify(currentGameParameters, ["worldSizeX", "worldSizeY", "unitRange"]));
             }
             else if (request.url == '/getBoard') {
+                if (currentGameParameters.units === null) buildInitialBoard();
                 compressAndSend(request, response, 'application/json', JSON.stringify(currentGameParameters.units));
             }
             else if (request.url == '/initBoard') {
@@ -166,7 +174,7 @@ require('http').createServer(function (request, response) {
             }
             else if (request.url == '/newBoard') {
                 //#region new board
-                //TODO: check consistency between new boards
+                //TODO: delete this when rules are implemented on server side
                 if (!currentGameParameters.listeningToOrders) {
                     currentGameParameters.players.forEach(
                         function (player) {
@@ -192,7 +200,7 @@ require('http').createServer(function (request, response) {
                 //#endregion
             }
             else if (request.url == '/login') {
-                //#region login
+                //#region login         
                 if (currentGameParameters.players.length < currentGameParameters.playerCount) {
                     var player = new Player();
                     var currentPlayersIds = new Array();
@@ -205,6 +213,7 @@ require('http').createServer(function (request, response) {
                     player.team = i; 
                     player.uniqueID = Math.random().toString(16);
                     currentGameParameters.players.push(player);
+                    log(''.concat('login ', JSON.stringify(player)));
                     compressAndSend(request, response, 'application/json',
                         JSON.stringify({ game: { uniqueID: currentGameParameters.uniqueID }, player: player }));
                 }
@@ -240,6 +249,7 @@ require('http').createServer(function (request, response) {
                         response.end(JSON.stringify({ error: 'Wrong authentication.' }));
                     }
                     else {
+                        log(''.concat('logoff ', JSON.stringify(correctAuth)));
                         var newPlayers = new Array();
                         currentGameParameters.players.forEach(
                             function (player) {
