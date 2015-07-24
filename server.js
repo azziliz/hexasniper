@@ -52,14 +52,18 @@ function DefaultGameParameters() {
     this.worldSizeY = 10; //100; // number of vertical tiles. Has to be an even number
     this.playerCount = 2;
     this.initialUnitCount = 2; //600; // number of units per player at startup.
-    this.unitRange = 5; //number of tiles around a unit, where the unit is able to shoot
-    this.uniqueID = 0.0; //unique ID of the current game (hexadecimal string)
+    this.unitRange = 5; // number of tiles around a unit, where the unit is able to shoot
+    this.uniqueID = 0.0; // unique ID of the current game (hexadecimal string)
 }
 
 function GameEngine(){
-    this.units = null;
-    this.players = null;
+    this.tiles = null; // array of all World Tiles
+    this.units = null; // array of all Army Units
+    this.players = null; // array of all Players
     this.listeningToOrders = true;
+
+    this.teamColorsBright = ["#f22", "#04f", "#4d0", "#a0f"];
+    this.teamColorsGrayed = ["#777", "#777", "#777", "#777"];
 }
 
 var gameParameters = new DefaultGameParameters();
@@ -68,18 +72,75 @@ var engine = new GameEngine();
 //#endregion
 
 
-function ArmyUnit_() {
-    this.posX = 0;
-    this.posY = 0;
-    this.team = 0;
-    this.hp = 0;
-    this.ao = null;
-    this.mo = null;
-}
-
 //#region Game functions
 
+// Fills tile arrays inside the engine. Computes neighbors. Draws grid.
+function initTiles() {
+    //#region Creating tiles
+    engine.tiles = new Array();
+    for (var x = 0; x < gameParameters.worldSizeX; x++) {
+        engine.tiles[x] = new Array();
+        for (var y = 0; y < gameParameters.worldSizeY; y++) {
+            engine.tiles[x][y] = new WorldTile();
+        }
+    }
+    //#endregion
+    //#region Calculating neighbors
+    for (var x = 0; x < gameParameters.worldSizeX; x++) {
+        for (var y = 0; y < gameParameters.worldSizeY; y++) {
+            var tmp = engine.tiles[x][y];
+            var mod = y % 2;
+            tmp.matrixX = x;
+            tmp.matrixY = y;
+            tmp.neighbors = new Array();
+            if (x != 0) {
+                tmp.neighbors.push(engine.tiles[x - 1][y]);
+                tmp.neighborW = engine.tiles[x - 1][y];
+            }
+            if (x != gameParameters.worldSizeX - 1) {
+                tmp.neighbors.push(engine.tiles[x + 1][y]);
+                tmp.neighborE = engine.tiles[x + 1][y];
+            }
+            if (mod == 0) {
+                tmp.neighbors.push(engine.tiles[x][y + 1]);
+                tmp.neighborSE = engine.tiles[x][y + 1];
+                if (x != 0) {
+                    tmp.neighbors.push(engine.tiles[x - 1][y + 1]);
+                    tmp.neighborSW = engine.tiles[x - 1][y + 1];
+                }
+                if (y != 0) {
+                    tmp.neighbors.push(engine.tiles[x][y - 1]);
+                    tmp.neighborNE = engine.tiles[x][y - 1];
+                    if (x != 0) {
+                        tmp.neighbors.push(engine.tiles[x - 1][y - 1]);
+                        tmp.neighborNW = engine.tiles[x - 1][y - 1];
+                    }
+                }
+            }
+            else {
+                tmp.neighbors.push(engine.tiles[x][y - 1]);
+                tmp.neighborNW = engine.tiles[x][y - 1];
+                if (x != gameParameters.worldSizeX - 1) {
+                    tmp.neighbors.push(engine.tiles[x + 1][y - 1]);
+                    tmp.neighborNE = engine.tiles[x + 1][y - 1];
+                }
+                if (y != gameParameters.worldSizeY - 1) {
+                    tmp.neighbors.push(engine.tiles[x][y + 1]);
+                    tmp.neighborSW = engine.tiles[x][y + 1];
+                    if (x != gameParameters.worldSizeX - 1) {
+                        tmp.neighbors.push(engine.tiles[x + 1][y + 1]);
+                        tmp.neighborSE = engine.tiles[x + 1][y + 1]
+                    }
+                }
+            }
+
+        }
+    }
+            //#endregion
+}
+
 function buildInitialBoard() {
+    initTiles();
     engine.players = new Array();
     engine.units = new Array();
     gameParameters.uniqueID = Math.random().toString(16);
@@ -90,16 +151,16 @@ function buildInitialBoard() {
         var occupiedTile = false;
         engine.units.forEach(
             function (unit) {
-                if ((unit.posX === coordX) && (unit.posY === coordY)) {
+                if ((unit.position.matrixX === coordX) && (unit.position.matrixY === coordY)) {
                     occupiedTile = true;
                 }
             });
         if (!occupiedTile) {
-			var newUnit = new ArmyUnit_();
+			var newUnit = new ArmyUnit();
             newUnit.hp = 12; 
             newUnit.team = i % gameParameters.playerCount;
-            newUnit.posX = coordX;
-            newUnit.posY = coordY;
+            newUnit.position = engine.tiles[coordX][coordY];
+            engine.tiles[coordX][coordY].unit = newUnit;
             engine.units.push(newUnit);
             i--;
         }
@@ -201,11 +262,11 @@ require('http').createServer(function (request, response) {
                     var postData = JSON.parse(buffer);
                     postData.board.forEach(
                         function (unit) {
-                            var newUnit = new ArmyUnit_();
+                            var newUnit = new ArmyUnit();
                             newUnit.hp = unit.hp;
                             newUnit.team = unit.team;
-                            newUnit.posX = unit.pos.x;
-                            newUnit.posY = unit.pos.y;
+                            newUnit.position = engine.tiles[unit.pos.x][unit.pos.y];
+                            engine.tiles[unit.pos.x][unit.pos.y].unit = newUnit;
                             engine.units.push(newUnit);
                         });
                     //console.log(JSON.stringify(engine.units));
@@ -316,13 +377,13 @@ require('http').createServer(function (request, response) {
                                     var unitValidated = false;
                                     engine.units.forEach(
                                         function (candidate) {
-                                            if ((candidate.posX === unit.pos.x)
-                                                && (candidate.posY === unit.pos.y)
+                                            if ((candidate.position.matrixX === unit.pos.x)
+                                                && (candidate.position.matrixY === unit.pos.y)
                                                 && (candidate.team === unit.team)
                                                 && (candidate.hp === unit.hp)
                                                 && (candidate.team === playerTeam)) {
-                                                candidate.ao = unit.ao;
-                                                candidate.mo = unit.mo;
+                                                candidate.attackOrder = unit.ao;
+                                                candidate.moveOrder = unit.mo;
                                                 unitValidated = true;
                                             }
                                         });
@@ -375,3 +436,4 @@ require('http').createServer(function (request, response) {
 }).listen(15881);
 
 console.log('Server running at http://127.0.0.1:15881/');
+

@@ -647,8 +647,8 @@
                     var newUnit = new ArmyUnit();
                     newUnit.hp = unit.hp;
                     newUnit.team = unit.team;
-                    newUnit.position = engine.tiles[unit.posX][unit.posY];
-                    engine.tiles[unit.posX][unit.posY].unit = newUnit;
+                    newUnit.position = engine.tiles[unit.pos.x][unit.pos.y];
+                    engine.tiles[unit.pos.x][unit.pos.y].unit = newUnit;
                     engine.units.push(newUnit);
                 });
             engine.sendAjax("login", null, engine.login, true);
@@ -698,10 +698,10 @@
                     var newUnit = new ArmyUnit();
                     newUnit.hp = unit.hp;
                     newUnit.team = unit.team;
-                    newUnit.position = engine.tiles[unit.posX][unit.posY];
+                    newUnit.position = engine.tiles[unit.pos.x][unit.pos.y];
                     newUnit.attackOrder = (unit.ao == null ? null : engine.tiles[unit.ao.x][unit.ao.y]);
                     newUnit.moveOrder = (unit.mo == null ? null : engine.tiles[unit.mo.x][unit.mo.y]);
-                    engine.tiles[unit.posX][unit.posY].unit = newUnit;
+                    engine.tiles[unit.pos.x][unit.pos.y].unit = newUnit;
                     engine.units.push(newUnit);
                 });
             console.debug(JSON.stringify(engine.units));
