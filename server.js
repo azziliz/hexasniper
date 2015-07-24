@@ -47,18 +47,23 @@ function WorldTile() {
     };
 }
 
-function GameParameters() {
+function DefaultGameParameters() {
     this.worldSizeX = 10; //156; // number of horizontal tiles. Has to be an even number
     this.worldSizeY = 10; //100; // number of vertical tiles. Has to be an even number
     this.playerCount = 2;
     this.initialUnitCount = 2; //600; // number of units per player at startup.
     this.unitRange = 5; //number of tiles around a unit, where the unit is able to shoot
+    this.uniqueID = 0.0; //unique ID of the current game (hexadecimal string)
+}
+
+function GameEngine(){
     this.units = null;
     this.players = null;
-    this.uniqueID = 0.0;
     this.listeningToOrders = true;
 }
-var currentGameParameters = new GameParameters();
+
+var gameParameters = new DefaultGameParameters();
+var engine = new GameEngine();
 
 //#endregion
 
@@ -72,16 +77,18 @@ function ArmyUnit_() {
     this.mo = null;
 }
 
+//#region Game functions
+
 function buildInitialBoard() {
-    currentGameParameters.players = new Array();
-    currentGameParameters.units = new Array();
-    currentGameParameters.uniqueID = Math.random().toString(16);
-    var i = currentGameParameters.initialUnitCount * currentGameParameters.playerCount;
+    engine.players = new Array();
+    engine.units = new Array();
+    gameParameters.uniqueID = Math.random().toString(16);
+    var i = gameParameters.initialUnitCount * gameParameters.playerCount;
     while (i > 0) {
-        var coordX = Math.floor(currentGameParameters.worldSizeX * Math.random());
-        var coordY = Math.floor(currentGameParameters.worldSizeY * Math.random());
+        var coordX = Math.floor(gameParameters.worldSizeX * Math.random());
+        var coordY = Math.floor(gameParameters.worldSizeY * Math.random());
         var occupiedTile = false;
-        currentGameParameters.units.forEach(
+        engine.units.forEach(
             function (unit) {
                 if ((unit.posX === coordX) && (unit.posY === coordY)) {
                     occupiedTile = true;
@@ -90,10 +97,10 @@ function buildInitialBoard() {
         if (!occupiedTile) {
 			var newUnit = new ArmyUnit_();
             newUnit.hp = 12; 
-            newUnit.team = i % currentGameParameters.playerCount;
+            newUnit.team = i % gameParameters.playerCount;
             newUnit.posX = coordX;
             newUnit.posY = coordY;
-            currentGameParameters.units.push(newUnit);
+            engine.units.push(newUnit);
             i--;
         }
     }
@@ -101,23 +108,23 @@ function buildInitialBoard() {
 
 function checkEndTurn(request, response, correctAuth) {
     var allOrdersGiven = true;
-    currentGameParameters.players.forEach(
+    engine.players.forEach(
         function (player) {
             if (!player.ordersGiven) allOrdersGiven = false;
         });
     if (allOrdersGiven) {
         log('all orders received');
-        compressAndSend(request, response, 'application/json', JSON.stringify(currentGameParameters.units));
+        compressAndSend(request, response, 'application/json', JSON.stringify(engine.units));
         correctAuth.feedbackGiven = true;
         var allFeedbackGiven = true;
-        currentGameParameters.players.forEach(
+        engine.players.forEach(
             function (player) {
                 if (!player.feedbackGiven) allFeedbackGiven = false;
             });
         if (allFeedbackGiven) {
             //TODO listenToNewBoard();
             log('all feedback given');
-            currentGameParameters.listeningToOrders = false;
+            engine.listeningToOrders = false;
         }
     }
     else {
@@ -126,6 +133,11 @@ function checkEndTurn(request, response, correctAuth) {
     }
 }
 
+//#endregion
+
+//#region Server stuff
+
+/// Tries to compress (gzip) the response, if the client browser allows it
 function compressAndSend(request, response, contType, txt) {
     var acceptEncoding = request.headers['accept-encoding'];
     if (!acceptEncoding) {
@@ -140,9 +152,12 @@ function compressAndSend(request, response, contType, txt) {
     }
 }
 
+/// Sends timestamped log to console
 function log(txt) {
     console.log(''.concat((new Date()).toISOString(), ' - ', txt));
 }
+
+//#endregion
 
 require('http').createServer(function (request, response) {
     //if (request.url !== '/feedback') console.log("".concat((new Date()).toISOString(), " - ", request.url));
@@ -162,11 +177,11 @@ require('http').createServer(function (request, response) {
         request.on('end', function () {
             if (request.url === '/getEngineConfig') {
                 response.writeHead(200, { 'Content-Type': 'application/json' });
-                response.end(JSON.stringify(currentGameParameters, ["worldSizeX", "worldSizeY", "unitRange"]));
+                response.end(JSON.stringify(gameParameters, ["worldSizeX", "worldSizeY", "unitRange"]));
             }
             else if (request.url === '/getBoard') {
-                if (currentGameParameters.units === null) buildInitialBoard();
-                compressAndSend(request, response, 'application/json', JSON.stringify(currentGameParameters.units));
+                if (engine.units === null) buildInitialBoard();
+                compressAndSend(request, response, 'application/json', JSON.stringify(engine.units));
             }
             else if (request.url === '/initBoard') {
                 buildInitialBoard();
@@ -176,13 +191,13 @@ require('http').createServer(function (request, response) {
             else if (request.url === '/newBoard') {
                 //#region new board
                 //TODO: delete this when rules are implemented on server side
-                if (!currentGameParameters.listeningToOrders) {
-                    currentGameParameters.players.forEach(
+                if (!engine.listeningToOrders) {
+                    engine.players.forEach(
                         function (player) {
                             player.ordersGiven = false;
                             player.feedbackGiven = false;
                         });
-                    currentGameParameters.units = new Array();
+                    engine.units = new Array();
                     var postData = JSON.parse(buffer);
                     postData.board.forEach(
                         function (unit) {
@@ -191,10 +206,10 @@ require('http').createServer(function (request, response) {
                             newUnit.team = unit.team;
                             newUnit.posX = unit.pos.x;
                             newUnit.posY = unit.pos.y;
-                            currentGameParameters.units.push(newUnit);
+                            engine.units.push(newUnit);
                         });
-                    //console.log(JSON.stringify(currentGameParameters.units));
-                    currentGameParameters.listeningToOrders = true;
+                    //console.log(JSON.stringify(engine.units));
+                    engine.listeningToOrders = true;
                 }
                 response.writeHead(200, { 'Content-Type': 'text/plain' });
                 response.end("OK");
@@ -202,10 +217,10 @@ require('http').createServer(function (request, response) {
             }
             else if (request.url === '/login') {
                 //#region login         
-                if (currentGameParameters.players.length < currentGameParameters.playerCount) {
+                if (engine.players.length < gameParameters.playerCount) {
                     var player = new Player();
                     var currentPlayersIds = new Array();
-                    currentGameParameters.players.forEach(
+                    engine.players.forEach(
                         function (currentPlayer) {
                             currentPlayersIds.push(currentPlayer.team);
                         });
@@ -213,10 +228,10 @@ require('http').createServer(function (request, response) {
                     while (currentPlayersIds.indexOf(i) >= 0) i++;
                     player.team = i; 
                     player.uniqueID = Math.random().toString(16);
-                    currentGameParameters.players.push(player);
+                    engine.players.push(player);
                     log(''.concat('login ', JSON.stringify(player)));
                     compressAndSend(request, response, 'application/json',
-                        JSON.stringify({ game: { uniqueID: currentGameParameters.uniqueID }, player: player }));
+                        JSON.stringify({ game: { uniqueID: gameParameters.uniqueID }, player: player }));
                 }
                 else {
                     response.writeHead(200, { 'Content-Type': 'application/json' });
@@ -228,18 +243,18 @@ require('http').createServer(function (request, response) {
                 //#region logoff
                 var postData = JSON.parse(buffer);
                 //console.log("postData = ".concat(buffer));
-                //console.log("currentGameParameters = ".concat(JSON.stringify(currentGameParameters)));
+                //console.log("gameParameters = ".concat(JSON.stringify(gameParameters)));
                 if ((postData === null) ||
                     (postData.authentication === null) ||
                     (postData.authentication.game === null) ||
-                    (postData.authentication.game.uniqueID !== currentGameParameters.uniqueID)) {
+                    (postData.authentication.game.uniqueID !== gameParameters.uniqueID)) {
                     response.writeHead(200, { 'Content-Type': 'application/json' });
                     response.end(JSON.stringify({ error: 'This game is not running.' }));
                 }
                 else {
                     var playerTeam = postData.authentication.player.team;
                     var correctAuth = null;
-                    currentGameParameters.players.forEach(
+                    engine.players.forEach(
                         function (currentPlayer) {
                             if ((currentPlayer.team === postData.authentication.player.team) && (currentPlayer.uniqueID === postData.authentication.player.uniqueID)) {
                                 correctAuth = currentPlayer;
@@ -252,13 +267,13 @@ require('http').createServer(function (request, response) {
                     else {
                         log(''.concat('logoff ', JSON.stringify(correctAuth)));
                         var newPlayers = new Array();
-                        currentGameParameters.players.forEach(
+                        engine.players.forEach(
                             function (player) {
                                 if (player.uniqueID !== correctAuth.uniqueID) {
                                     newPlayers.push(player);
                                 }
                             });
-                        currentGameParameters.players = newPlayers;
+                        engine.players = newPlayers;
                     }
                 }
                 response.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -269,19 +284,19 @@ require('http').createServer(function (request, response) {
                 //#region orders
                 // TODO : handle "server not ready yet (listeningToOrders)
                 //console.log("postData = ".concat(buffer));
-                //console.log("currentGameParameters = ".concat(JSON.stringify(currentGameParameters)));
+                //console.log("gameParameters = ".concat(JSON.stringify(gameParameters)));
                 var postData = JSON.parse(buffer);
                 if ((postData === null) ||
                     (postData.authentication === null) ||
                     (postData.authentication.game === null) ||
-                    (postData.authentication.game.uniqueID !== currentGameParameters.uniqueID)) {
+                    (postData.authentication.game.uniqueID !== gameParameters.uniqueID)) {
                     response.writeHead(200, { 'Content-Type': 'application/json' });
                     response.end(JSON.stringify({ error: 'This game is not running.' }));
                 }
                 else {
                     var playerTeam = postData.authentication.player.team;
                     var correctAuth = null;
-                    currentGameParameters.players.forEach(
+                    engine.players.forEach(
                         function (currentPlayer) {
                             if ((currentPlayer.team === postData.authentication.player.team) && (currentPlayer.uniqueID === postData.authentication.player.uniqueID))
                                 correctAuth = currentPlayer;
@@ -299,7 +314,7 @@ require('http').createServer(function (request, response) {
                             postData.orders.forEach(
                                 function (unit) {
                                     var unitValidated = false;
-                                    currentGameParameters.units.forEach(
+                                    engine.units.forEach(
                                         function (candidate) {
                                             if ((candidate.posX === unit.pos.x)
                                                 && (candidate.posY === unit.pos.y)
@@ -329,14 +344,14 @@ require('http').createServer(function (request, response) {
                 if ((postData === null) ||
                     (postData.authentication === null) ||
                     (postData.authentication.game === null) ||
-                    (postData.authentication.game.uniqueID !== currentGameParameters.uniqueID)) {
+                    (postData.authentication.game.uniqueID !== gameParameters.uniqueID)) {
                     response.writeHead(200, { 'Content-Type': 'application/json' });
                     response.end(JSON.stringify({ error: 'This game is not running.' }));
                 }
                 else {
                     var playerTeam = postData.authentication.player.team;
                     var correctAuth = null;
-                    currentGameParameters.players.forEach(
+                    engine.players.forEach(
                         function (currentPlayer) {
                             if ((currentPlayer.team === postData.authentication.player.team) && (currentPlayer.uniqueID === postData.authentication.player.uniqueID))
                                 correctAuth = currentPlayer;
