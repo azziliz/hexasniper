@@ -2,6 +2,8 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <meta name="author" content="Chriskang">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hexagrid</title>
     <style type="text/css">
         body {
@@ -534,8 +536,9 @@
             this.toJSON = function () {
                 // This function is automatically called by JSON.stringify
                 // We only stringify when we send unit orders to server
-                return { pos: this.position, 
-                    ao: this.attackOrder, mo: this.moveOrder, 
+                return {
+                    pos: this.position,
+                    ao: this.attackOrder, mo: this.moveOrder,
                     team: this.team, hp: this.hp
                 };
             };
@@ -572,7 +575,7 @@
             this.rng = new RNG(); // random number generator. See math stuff.
             this.selectedUnit = null;
             this.ordersSent = false;
-            this.targetedTiles = null;
+            this.targetedTiles = null; // TODO: remove me
 
             this.teamColorsBright = ["#f22", "#04f", "#4d0", "#a0f"];
             this.teamColorsGrayed = ["#777", "#777", "#777", "#777"];
@@ -678,20 +681,103 @@
             if (ret.error) alert(ret.error);
             else if (ret.standby) setTimeout(function () {
                 engine.sendAjax("feedback", JSON.stringify({ authentication: engine.authentication }), engine.ordersFeedback, true)
-            }, 8000);
+            }, 15000);
             else {
                 engine.applyOrders(ret);
             }
         };
         GameEngine.prototype.applyOrders = function (params) {
+            //// We cannot reset tiles with a forEach because it is a 2-dimensional array
+            //for (var x = 0; x < engine.serverParameters.worldSizeX; x++) {
+            //    for (var y = 0; y < engine.serverParameters.worldSizeY; y++) {
+            //        engine.tiles[x][y].unit = null;
+            //        engine.tiles[x][y].movingCount = 0;
+            //    }
+            //}
+            //engine.targetedTiles = new Array();
+            //engine.units = new Array();
+            //params.forEach(
+            //    function (unit) {
+            //        var newUnit = new ArmyUnit();
+            //        newUnit.hp = unit.hp;
+            //        newUnit.team = unit.team;
+            //        newUnit.position = engine.tiles[unit.pos.x][unit.pos.y];
+            //        newUnit.attackOrder = (unit.ao == null ? null : engine.tiles[unit.ao.x][unit.ao.y]);
+            //        newUnit.moveOrder = (unit.mo == null ? null : engine.tiles[unit.mo.x][unit.mo.y]);
+            //        engine.tiles[unit.pos.x][unit.pos.y].unit = newUnit;
+            //        engine.units.push(newUnit);
+            //    });
+            //console.debug(JSON.stringify(engine.units));
+            //// shoot
+            //engine.units.forEach(
+            //    function (sniper) {
+            //        if (sniper.attackOrder != null) {
+            //            sniper.attackOrder.unit.hp -= 2;
+            //            sniper.attackOrder = null;
+            //        }
+            //    });
+            //// bring out your dead
+            //var newUnitArray = new Array();
+            //engine.units.forEach(
+            //    function (alive) {
+            //        if (alive.hp <= 0) {
+            //            alive.position.unit = null;
+            //            alive.position = null;
+            //            alive.attackOrder = null;
+            //            alive.moveOrder = null;
+            //            alive = null;
+            //        }
+            //        else newUnitArray.push(alive);
+            //    });
+            //engine.units = newUnitArray;
+            //console.debug(JSON.stringify(engine.units));
+            //// move
+            //// removing move orders if 2 (or more) units target the same tile
+            //engine.units.forEach(
+            //    function (moving) {
+            //        if (moving.moveOrder != null) {
+            //            moving.moveOrder.movingCount++;
+            //            console.debug("pushing - ");
+            //            console.debug(JSON.stringify(moving.moveOrder));
+            //            if (engine.targetedTiles.indexOf(moving.moveOrder) == -1) {
+            //                engine.targetedTiles.push(moving.moveOrder);
+            //            }
+            //        }
+            //    });
+            //console.debug(engine.targetedTiles);
+            //engine.targetedTiles.forEach(
+            //    function (targetedTile) {
+            //        console.debug("test1 - ");
+            //        if (targetedTile.movingCount > 1) {
+            //            console.debug("test2 - ");
+            //            engine.units.forEach(
+            //                function (moving) {
+            //                    console.debug("test3 - ");
+            //                    if (moving.moveOrder === targetedTile) {
+            //                        console.debug("setting order to null - ");
+            //                        console.debug(moving.moveOrder);
+            //                        moving.moveOrder = null;
+            //                    }
+            //                });
+            //        }
+            //    });
+            //console.debug(JSON.stringify(engine.units));
+            //engine.units.forEach(
+            //    function (moving) {
+            //        if (moving.moveOrder != null) {
+            //            moving.position.unit = null;
+            //            moving.position = engine.tiles[moving.moveOrder.matrixX][moving.moveOrder.matrixY];
+            //            engine.tiles[moving.moveOrder.matrixX][moving.moveOrder.matrixY].unit = moving;
+            //            moving.moveOrder = null;
+            //        }
+            //    });
+            //engine.sendAjax("newBoard", JSON.stringify({ authentication: engine.authentication, board: engine.units }), null, true);
             // We cannot reset tiles with a forEach because it is a 2-dimensional array
             for (var x = 0; x < engine.serverParameters.worldSizeX; x++) {
                 for (var y = 0; y < engine.serverParameters.worldSizeY; y++) {
                     engine.tiles[x][y].unit = null;
-                    engine.tiles[x][y].movingCount = 0;
                 }
             }
-            engine.targetedTiles = new Array();
             engine.units = new Array();
             params.forEach(
                 function (unit) {
@@ -699,76 +785,9 @@
                     newUnit.hp = unit.hp;
                     newUnit.team = unit.team;
                     newUnit.position = engine.tiles[unit.pos.x][unit.pos.y];
-                    newUnit.attackOrder = (unit.ao == null ? null : engine.tiles[unit.ao.x][unit.ao.y]);
-                    newUnit.moveOrder = (unit.mo == null ? null : engine.tiles[unit.mo.x][unit.mo.y]);
                     engine.tiles[unit.pos.x][unit.pos.y].unit = newUnit;
                     engine.units.push(newUnit);
                 });
-            console.debug(JSON.stringify(engine.units));
-            // shoot
-            engine.units.forEach(
-                function (sniper) {
-                    if (sniper.attackOrder != null) {
-                        sniper.attackOrder.unit.hp -= 2;
-                        sniper.attackOrder = null;
-                    }
-                });
-            // bring out your dead
-            var newUnitArray = new Array();
-            engine.units.forEach(
-                function (alive) {
-                    if (alive.hp <= 0) {
-                        alive.position.unit = null;
-                        alive.position = null;
-                        alive.attackOrder = null;
-                        alive.moveOrder = null;
-                        alive = null;
-                    }
-                    else newUnitArray.push(alive);
-                });
-            engine.units = newUnitArray;
-            console.debug(JSON.stringify(engine.units));
-            // move
-            // removing move orders if 2 (or more) units target the same tile
-            engine.units.forEach(
-                function (moving) {
-                    if (moving.moveOrder != null) {
-                        moving.moveOrder.movingCount++;
-                        console.debug("pushing - ");
-                        console.debug(JSON.stringify(moving.moveOrder));
-                        if (engine.targetedTiles.indexOf(moving.moveOrder) == -1) {
-                            engine.targetedTiles.push(moving.moveOrder);
-                        }
-                    }
-                });
-            console.debug(engine.targetedTiles);
-            engine.targetedTiles.forEach(
-                function (targetedTile) {
-                    console.debug("test1 - ");
-                    if (targetedTile.movingCount > 1) {
-                        console.debug("test2 - ");
-                        engine.units.forEach(
-                            function (moving) {
-                                console.debug("test3 - ");
-                                if (moving.moveOrder === targetedTile) {
-                                    console.debug("setting order to null - ");
-                                    console.debug(moving.moveOrder);
-                                    moving.moveOrder = null;
-                                }
-                            });
-                    }
-                });
-            console.debug(JSON.stringify(engine.units));
-            engine.units.forEach(
-                function (moving) {
-                    if (moving.moveOrder != null) {
-                        moving.position.unit = null;
-                        moving.position = engine.tiles[moving.moveOrder.matrixX][moving.moveOrder.matrixY];
-                        engine.tiles[moving.moveOrder.matrixX][moving.moveOrder.matrixY].unit = moving;
-                        moving.moveOrder = null;
-                    }
-                });
-            engine.sendAjax("newBoard", JSON.stringify({ authentication: engine.authentication, board: engine.units }), null, true);
             engine.ordersSent = false;
             applyZoom();
         };

@@ -13,15 +13,13 @@ function Player() {
 }
 
 function ArmyUnit() {
-    this.position = null; // type is WorldTile
+    this.position = null; // the WorldTile where the Unit is
     this.team = 0;
     this.hp = 0; // max HP = 12 ; 0 = dead
-    this.range = null; // list of all the World Tiles that are within range
     this.attackOrder = null;
     this.moveOrder = null;
     this.toJSON = function () {
         // This function is automatically called by JSON.stringify
-        // We only stringify when we send unit orders to server
         return {
             pos: this.position,
             ao: this.attackOrder, mo: this.moveOrder,
@@ -29,6 +27,9 @@ function ArmyUnit() {
         };
     };
 }
+ArmyUnit.prototype.toString = function () { return "xx"; }
+ArmyUnit.prototype.toLocaleString = function () { return "xx"; }
+ArmyUnit.prototype.valueOf = function () { return "xx"; }
 
 function WorldTile() {
     this.matrixX = 0; // in integer units (usually [0, 150])
@@ -60,7 +61,8 @@ function GameEngine(){
     this.tiles = null; // array of all World Tiles
     this.units = null; // array of all Army Units
     this.players = null; // array of all Players
-    this.listeningToOrders = true;
+    this.ordersComputed = false;
+    this.listeningToOrders = true; // TODO : remove this
 
     this.teamColorsBright = ["#f22", "#04f", "#4d0", "#a0f"];
     this.teamColorsGrayed = ["#777", "#777", "#777", "#777"];
@@ -139,6 +141,7 @@ function initTiles() {
             //#endregion
 }
 
+// Resets players and units. Fills board with new units.
 function buildInitialBoard() {
     initTiles();
     engine.players = new Array();
@@ -167,14 +170,86 @@ function buildInitialBoard() {
     }
 }
 
+// When all orders are received from clients, this function applies them to the board in sequence:
+// 1. Attack Orders (all players at the same time)
+// 2. Move Orders (all players at the same time)
+function computeOrders() {
+    // shooting
+    engine.units.forEach(
+        function (sniper) {
+            if (sniper.attackOrder != null) {
+                sniper.attackOrder.unit.hp -= 2;
+                sniper.attackOrder = null;
+            }
+        });
+    // bring out your dead
+    var newUnitArray = new Array();
+    engine.units.forEach(
+        function (alive) {
+            if (alive.hp <= 0) {
+                alive.position.unit = null;
+                alive.position = null;
+                alive.attackOrder = null;
+                alive.moveOrder = null;
+                alive = null;
+            }
+            else newUnitArray.push(alive);
+        });
+    engine.units = newUnitArray;
+    // initializing tiles (for move)
+    engine.tiles.forEach(
+        function (row) {
+            row.forEach(
+                function (tile) {
+                    tile.movingCount = 0;
+                });
+        });
+    var targetedTiles = new Array();
+    // removing move orders if 2 (or more) units target the same tile
+    engine.units.forEach(
+        function (moving) {
+            if (moving.moveOrder != null) {
+                moving.moveOrder.movingCount++;
+                if (targetedTiles.indexOf(moving.moveOrder) === -1) {
+                    targetedTiles.push(moving.moveOrder);
+                }
+            }
+        });
+    targetedTiles.forEach(
+        function (targetedTile) {
+            if (targetedTile.movingCount > 1) {
+                engine.units.forEach(
+                    function (moving) {
+                        if (moving.moveOrder === targetedTile) {
+                            moving.moveOrder = null;
+                        }
+                    });
+            }
+        });
+    // moving units
+    engine.units.forEach(
+        function (moving) {
+            if (moving.moveOrder != null) {
+                moving.position.unit = null;
+                moving.position = engine.tiles[moving.moveOrder.matrixX][moving.moveOrder.matrixY];
+                engine.tiles[moving.moveOrder.matrixX][moving.moveOrder.matrixY].unit = moving;
+                moving.moveOrder = null;
+            }
+        });
+}
+
 function checkEndTurn(request, response, correctAuth) {
-    var allOrdersGiven = true;
+    var allOrdersReceived = true;
     engine.players.forEach(
         function (player) {
-            if (!player.ordersGiven) allOrdersGiven = false;
+            if (!player.ordersGiven) allOrdersReceived = false;
         });
-    if (allOrdersGiven) {
+    if (allOrdersReceived) {
         log('all orders received');
+        if (!engine.ordersComputed) {
+            computeOrders();
+            engine.ordersComputed = true;
+        }
         compressAndSend(request, response, 'application/json', JSON.stringify(engine.units));
         correctAuth.feedbackGiven = true;
         var allFeedbackGiven = true;
@@ -184,8 +259,14 @@ function checkEndTurn(request, response, correctAuth) {
             });
         if (allFeedbackGiven) {
             //TODO listenToNewBoard();
+            engine.ordersComputed = false;
             log('all feedback given');
-            engine.listeningToOrders = false;
+            //engine.listeningToOrders = false;
+            engine.players.forEach(
+                function (player) {
+                    player.ordersGiven = false;
+                    player.feedbackGiven = false;
+                });
         }
     }
     else {
@@ -381,9 +462,11 @@ require('http').createServer(function (request, response) {
                                                 && (candidate.position.matrixY === unit.pos.y)
                                                 && (candidate.team === unit.team)
                                                 && (candidate.hp === unit.hp)
-                                                && (candidate.team === playerTeam)) {
-                                                candidate.attackOrder = unit.ao;
-                                                candidate.moveOrder = unit.mo;
+                                                && (candidate.team === playerTeam)
+                                                && ((unit.ao === null) || (unit.mo === null))
+                                                ) {
+                                                if (unit.ao !== null) candidate.attackOrder = engine.tiles[unit.ao.x][unit.ao.y];
+                                                if (unit.mo !== null) candidate.moveOrder = engine.tiles[unit.mo.x][unit.mo.y];
                                                 unitValidated = true;
                                             }
                                         });
